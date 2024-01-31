@@ -226,6 +226,54 @@ app.delete("/api/subtasks/:id", authenticateToken, async (req, res) => {
   }
 });
 
+
+///////////////////////
+////////////////////////
+// Twilio configuration
+const accountSid = 'your-twilio-account-sid';
+const authToken = 'your-twilio-auth-token';
+const twilioClient = new twilio(accountSid, authToken);
+
+// Function to perform voice calling
+async function performVoiceCall(userPhoneNumber) {
+  try {
+    // Use Twilio to initiate a voice call
+    await twilioClient.calls.create({
+      to: userPhoneNumber,
+      from: 'your-twilio-phone-number',
+      url: 'http://your-webhook-url', // replace with your actual webhook URL
+      method: 'GET',
+    });
+
+    console.log(`Voice call initiated to ${userPhoneNumber}`);
+  } catch (error) {
+    console.error(`Error initiating voice call: ${error.message}`);
+  }
+}
+
+// Cron job to check and initiate voice calls
+cron.schedule('0 0 * * *', async () => {
+  try {
+    const tasks = await Task.find({ status: 'TODO', due_date: { $lt: new Date() } })
+      .sort({ priority: 1 }); // Sort tasks by priority ascending
+
+    for (const task of tasks) {
+      const user = await User.findById(task.user_id);
+      if (user) {
+        // Check if the user has a valid phone number
+        if (user.phone_number) {
+          // Perform voice call
+          await performVoiceCall(user.phone_number);
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`Error in cron job: ${error.message}`);
+  }
+});
+////////////////////////
+///////////////////////
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
