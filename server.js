@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
+const cron = require("node-cron");
+const twilio = require("twilio");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -105,6 +107,32 @@ function authenticateToken(req, res, next) {
   });
 }
 
+const calculatePriority = (dueDate) => {
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  const dayAfterTomorrow = new Date();
+  dayAfterTomorrow.setDate(today.getDate() + 2);
+
+  // Set the hours, minutes, seconds, and milliseconds to 0 for accurate comparison
+  today.setHours(0, 0, 0, 0);
+  tomorrow.setHours(0, 0, 0, 0);
+  dayAfterTomorrow.setHours(0, 0, 0, 0);
+
+  if (dueDate.getTime() === today.getTime()) {
+    return 0; // Due date is today
+  } else if (dueDate > tomorrow && dueDate <= dayAfterTomorrow) {
+    return 1; // Due date is between tomorrow and day after tomorrow
+  } else if (
+    dueDate > dayAfterTomorrow &&
+    dueDate <= tomorrow.setDate(today.getDate() + 4)
+  ) {
+    return 2; // Due date is between day after tomorrow and 3-4 days from today
+  } else {
+    return 3; // Due date is 5 or more days from today
+  }
+};
+
 // 1. Create task
 app.post("/api/tasks", async (req, res) => {
   try {
@@ -115,7 +143,7 @@ app.post("/api/tasks", async (req, res) => {
       title,
       description,
       due_date,
-      priority: 0,
+      priority: calculatePriority(new Date(due_date)),
       status: "TODO",
     });
     await newTask.save();
@@ -140,7 +168,7 @@ app.post("/api/subtasks", async (req, res) => {
 });
 
 // 3. Get all user tasks
-app.get("/api/tasks", authenticateToken, async (req, res) => {
+app.get("/api/tasks", async (req, res) => {
   try {
     // Implement pagination and filtering based on priority, due date, etc.
     const tasks = await Task.find();
@@ -152,7 +180,7 @@ app.get("/api/tasks", authenticateToken, async (req, res) => {
 });
 
 // 4. Get all user subtasks
-app.get("/api/subtasks", authenticateToken, async (req, res) => {
+app.get("/api/subtasks", async (req, res) => {
   try {
     const { task_id } = req.query;
     const query = task_id ? { task_id } : {};
@@ -165,7 +193,7 @@ app.get("/api/subtasks", authenticateToken, async (req, res) => {
 });
 
 // 5. Update task
-app.patch("/api/tasks/:id", authenticateToken, async (req, res) => {
+app.patch("/api/tasks/:id", async (req, res) => {
   try {
     const { due_date, status } = req.body;
     const updatedTask = await Task.findByIdAndUpdate(
@@ -226,12 +254,11 @@ app.delete("/api/subtasks/:id", authenticateToken, async (req, res) => {
   }
 });
 
-
 ///////////////////////
 ////////////////////////
 // Twilio configuration
-const accountSid = 'your-twilio-account-sid';
-const authToken = 'your-twilio-auth-token';
+const accountSid = "ACcd71405405606bfdb2f09b58a600a7b3";
+const authToken = "b1108234f54be6e0158a8aa138c0dffd";
 const twilioClient = new twilio(accountSid, authToken);
 
 // Function to perform voice calling
@@ -240,9 +267,9 @@ async function performVoiceCall(userPhoneNumber) {
     // Use Twilio to initiate a voice call
     await twilioClient.calls.create({
       to: userPhoneNumber,
-      from: 'your-twilio-phone-number',
-      url: 'http://your-webhook-url', // replace with your actual webhook URL
-      method: 'GET',
+      from: "+16592163232 ",
+      url: "http://demo.twilio.com/docs/voice.xml", // replace with your actual webhook URL
+      method: "GET",
     });
 
     console.log(`Voice call initiated to ${userPhoneNumber}`);
@@ -251,11 +278,14 @@ async function performVoiceCall(userPhoneNumber) {
   }
 }
 
+
 // Cron job to check and initiate voice calls
-cron.schedule('0 0 * * *', async () => {
+cron.schedule("0 0 * * *", async () => {
   try {
-    const tasks = await Task.find({ status: 'TODO', due_date: { $lt: new Date() } })
-      .sort({ priority: 1 }); // Sort tasks by priority ascending
+    const tasks = await Task.find({
+      status: "TODO",
+      due_date: { $lt: new Date() },
+    }).sort({ priority: 1 }); // Sort tasks by priority ascending
 
     for (const task of tasks) {
       const user = await User.findById(task.user_id);
@@ -271,8 +301,8 @@ cron.schedule('0 0 * * *', async () => {
     console.error(`Error in cron job: ${error.message}`);
   }
 });
-////////////////////////
-///////////////////////
+//////////////////////
+/////////////////////
 
 // Start the server
 app.listen(PORT, () => {
