@@ -22,11 +22,11 @@ mongoose.connection.on("connected", () => {
 // Define MongoDB models (Task, SubTask, User)
 
 const taskSchema = new mongoose.Schema({
-  // user_id: {
-  //   type: mongoose.Schema.Types.ObjectId,
-  //   ref: "User",
-  //   required: true,
-  // },
+  user_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: true,
+  },
   title: { type: String, required: true },
   description: { type: String, required: true },
   due_date: { type: Date, required: true },
@@ -67,6 +67,33 @@ const User = mongoose.model("User", userSchema);
 // Define APIs
 // Implement JWT authentication middleware
 
+// POST method to create a new user
+app.post("/api/users", async (req, res) => {
+  try {
+    // Extract data from the request body
+    const { phone_number, priority } = req.body;
+
+    // Create a new user instance
+    const newUser = new User({
+      phone_number,
+      priority,
+    });
+
+    // Save the user to the database
+    const savedUser = await newUser.save();
+
+    // Send a successful response
+    res.status(201).json({
+      message: "User created successfully",
+      user: savedUser,
+    });
+  } catch (error) {
+    // Handle errors and send an error response
+    console.error(error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 function authenticateToken(req, res, next) {
   const token = req.headers["authorization"];
   if (!token) return res.status(401).json({ error: "Unauthorized" });
@@ -81,8 +108,10 @@ function authenticateToken(req, res, next) {
 // 1. Create task
 app.post("/api/tasks", async (req, res) => {
   try {
-    const { title, description, due_date } = req.body;
+    const { title, description, due_date, user_id } = req.body;
+
     const newTask = new Task({
+      user_id,
       title,
       description,
       due_date,
@@ -199,4 +228,5 @@ app.delete("/api/subtasks/:id", authenticateToken, async (req, res) => {
 
 // Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${
+  console.log(`Server is running on port ${PORT}`);
+});
