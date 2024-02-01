@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 8080;
 app.use(bodyParser.json());
 
 mongoose.connect(
-  "mongodb+srv://mayank:mayank@cluster0.dxu2r.mongodb.net/taskManager",
+  "mongodb+srv://<username>:<password>@cluster0.dxu2r.mongodb.net/taskManager",
   {
     useNewUrlParser: true,
     useUnifiedTopology: true,
@@ -25,7 +25,7 @@ mongoose.connection.on("connected", () => {
 
 const taskSchema = new mongoose.Schema({
   user_id: {
-    type: mongoose.Schema.Types.ObjectId,
+    type: String,
     ref: "User",
     required: true,
   },
@@ -67,7 +67,6 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model("User", userSchema);
 
 // Define APIs
-// Implement JWT authentication middleware
 
 // POST method to create a new user
 app.post("/api/users", async (req, res) => {
@@ -96,21 +95,14 @@ app.post("/api/users", async (req, res) => {
   }
 });
 
-function authenticateToken(req, res, next) {
-  const token = req.headers["authorization"];
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
-
-  jwt.verify(token, "687wyiehiuhi@hhgshydg$usgy", (err, user) => {
-    if (err) return res.status(403).json({ error: "Forbidden" });
-    req.user = user;
-    next();
-  });
-}
-
+////////////////////////////
 const calculatePriority = (dueDate) => {
   const today = new Date();
   const tomorrow = new Date();
+  const otherDates = new Date();
+  otherDates.setDate(today.getDate() + 4);
   tomorrow.setDate(today.getDate() + 1);
+  // console.log(today + "---" + dueDate + "-- " + today.getDate()+1 + " --- " + tomorrow);
   const dayAfterTomorrow = new Date();
   dayAfterTomorrow.setDate(today.getDate() + 2);
 
@@ -119,17 +111,14 @@ const calculatePriority = (dueDate) => {
   tomorrow.setHours(0, 0, 0, 0);
   dayAfterTomorrow.setHours(0, 0, 0, 0);
 
-  if (dueDate.getTime() === today.getTime()) {
+  if (dueDate < tomorrow) {
     return 0; // Due date is today
-  } else if (dueDate > tomorrow && dueDate <= dayAfterTomorrow) {
+  } else if (dueDate >= tomorrow && dueDate <= dayAfterTomorrow) {
     return 1; // Due date is between tomorrow and day after tomorrow
-  } else if (
-    dueDate > dayAfterTomorrow &&
-    dueDate <= tomorrow.setDate(today.getDate() + 4)
-  ) {
+  } else if (dueDate > dayAfterTomorrow && dueDate <= otherDates) {
     return 2; // Due date is between day after tomorrow and 3-4 days from today
   } else {
-    return 3; // Due date is 5 or more days from today
+    return 3; // Due date is 5 or more days from today
   }
 };
 
@@ -170,7 +159,6 @@ app.post("/api/subtasks", async (req, res) => {
 // 3. Get all user tasks
 app.get("/api/tasks", async (req, res) => {
   try {
-    // Implement pagination and filtering based on priority, due date, etc.
     const tasks = await Task.find();
     res.status(200).json(tasks);
   } catch (error) {
@@ -209,7 +197,7 @@ app.patch("/api/tasks/:id", async (req, res) => {
 });
 
 // 6. Update subtask
-app.patch("/api/subtasks/:id", authenticateToken, async (req, res) => {
+app.patch("/api/subtasks/:id", async (req, res) => {
   try {
     const { status } = req.body;
     const updatedSubTask = await SubTask.findByIdAndUpdate(
@@ -225,7 +213,7 @@ app.patch("/api/subtasks/:id", authenticateToken, async (req, res) => {
 });
 
 // 7. Delete task (soft deletion)
-app.delete("/api/tasks/:id", authenticateToken, async (req, res) => {
+app.delete("/api/tasks/:id", async (req, res) => {
   try {
     const deletedTask = await Task.findByIdAndUpdate(
       req.params.id,
@@ -240,7 +228,7 @@ app.delete("/api/tasks/:id", authenticateToken, async (req, res) => {
 });
 
 // 8. Delete subtask (soft deletion)
-app.delete("/api/subtasks/:id", authenticateToken, async (req, res) => {
+app.delete("/api/subtasks/:id", async (req, res) => {
   try {
     const deletedSubTask = await SubTask.findByIdAndUpdate(
       req.params.id,
@@ -257,8 +245,8 @@ app.delete("/api/subtasks/:id", authenticateToken, async (req, res) => {
 ///////////////////////
 ////////////////////////
 // Twilio configuration
-const accountSid = "ACcd71405405606bfdb2f09b58a600a7b3";
-const authToken = "b1108234f54be6e0158a8aa138c0dffd";
+const accountSid = "your twilio accountSid";
+const authToken = "your twilio auth -token";
 const twilioClient = new twilio(accountSid, authToken);
 
 // Function to perform voice calling
@@ -267,7 +255,7 @@ async function performVoiceCall(userPhoneNumber) {
     // Use Twilio to initiate a voice call
     await twilioClient.calls.create({
       to: userPhoneNumber,
-      from: "+16592163232 ",
+      from: "your twilio phone number ",
       url: "http://demo.twilio.com/docs/voice.xml", // replace with your actual webhook URL
       method: "GET",
     });
@@ -278,9 +266,7 @@ async function performVoiceCall(userPhoneNumber) {
   }
 }
 
-
-// Cron job to check and initiate voice calls
-cron.schedule("0 0 * * *", async () => {
+const cronJobLogic = async () => {
   try {
     const tasks = await Task.find({
       status: "TODO",
@@ -289,20 +275,17 @@ cron.schedule("0 0 * * *", async () => {
 
     for (const task of tasks) {
       const user = await User.findById(task.user_id);
-      if (user) {
-        // Check if the user has a valid phone number
-        if (user.phone_number) {
-          // Perform voice call
-          await performVoiceCall(user.phone_number);
-        }
+      if (user && user.phone_number) {
+        // Perform voice call
+        await performVoiceCall(user.phone_number);
       }
     }
   } catch (error) {
     console.error(`Error in cron job: ${error.message}`);
   }
-});
-//////////////////////
-/////////////////////
+};
+
+cronJobLogic();
 
 // Start the server
 app.listen(PORT, () => {
